@@ -4,7 +4,21 @@ Boîte à outils **agent-agnostique** pour le modding Minecraft **Fabric** (MC 1
 Pensée pour être ajoutée en **git submodule** dans un mod (ou au niveau d'un dossier de mods), afin que
 n'importe quel agent IA — ou humain — puisse builder, vérifier les API et tester un mod de façon fiable.
 
-## Ajouter en submodule
+## Démarrer un nouveau mod (dépôt vide → submodule → génération)
+Pas besoin d'une copie « standalone » du kit : on part d'un dépôt vide, on y greffe le kit en
+submodule, et on génère le mod **à la racine** avec les outils du submodule.
+```bash
+mkdir superbloc && cd superbloc
+git init -b main
+git submodule add <url-de-ce-depot> tools/fabric-agent-kit
+tools/fabric-agent-kit/bin/mc-new-mod superbloc hugo.brua.superbloc "Super Bloc" --dir .
+tools/fabric-agent-kit/bin/mc-setup .      # configure le JDK 21 pour gradle
+tools/fabric-agent-kit/bin/mc-smoke .      # build + boot serveur headless + assert
+```
+`mc-new-mod` accepte une cible non vide tant qu'aucun fichier généré n'existe déjà — la présence de
+`.git`, `.gitmodules` ou `tools/` ne gêne pas.
+
+### Ajouter le kit à un mod existant
 ```bash
 git submodule add <url-de-ce-depot> tools/fabric-agent-kit
 tools/fabric-agent-kit/bin/mc-setup        # configure le JDK 21 pour gradle
