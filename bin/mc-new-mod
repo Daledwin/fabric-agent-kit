@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# mc-new-mod — genere un nouveau mod Fabric pre-configure (MC 1.21.11, mappings Mojang, split client/common),
+# HORS-LIGNE, sans passer par le generateur web. Remplace la "generation de projet" du guide papier.
+set -uo pipefail
+KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEMPLATE="$KIT_ROOT/template"
+
+usage() {
+  cat >&2 <<'EOF'
+mc-new-mod <mod-id> <package> [Nom affiché] [--dir <cible>]
+
+  <mod-id>   minuscules, [a-z0-9_-], commence par une lettre   (ex: superbloc)
+  <package>  domaine inverse minuscule, >=2 segments           (ex: hugo.brua.superbloc)
+             (sert aussi de maven_group)
+  [Nom]      nom lisible du mod                                (def: le mod-id)
+  --dir      dossier cible                                     (def: ./<mod-id>)
+
+Genere un squelette qui COMPILE et TOURNE : ModInitializer (commun) + ClientModInitializer (client),
+fabric.mod.json, configs mixin, build gradle. Ensuite : ouvre dans IntelliJ, ou teste avec mc-smoke.
+EOF
+}
+
+[ $# -ge 2 ] || { usage; exit 2; }
+MODID=""; PACKAGE=""; NAME=""; TARGET=""; pos=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dir) TARGET="${2:-}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) case $pos in 0) MODID="$1" ;; 1) PACKAGE="$1" ;; 2) NAME="$1" ;; esac; pos=$((pos+1)) ;;
+  esac
+  shift
+done
+[ -n "$MODID" ] && [ -n "$PACKAGE" ] || { usage; exit 2; }
+[ -n "$NAME" ] || NAME="$MODID"
+[ -n "$TARGET" ] || TARGET="./$MODID"
+
+echo "$MODID"   | grep -qE '^[a-z][a-z0-9_-]*$' \
+  || { echo "[mc-new-mod] mod-id invalide (minuscules, [a-z0-9_-], commence par une lettre)." >&2; exit 2; }
+echo "$PACKAGE" | grep -qE '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$' \
+  || { echo "[mc-new-mod] package invalide (ex: hugo.brua.$MODID)." >&2; exit 2; }
+[ -d "$TEMPLATE" ] || { echo "[mc-new-mod] template introuvable: $TEMPLATE" >&2; exit 1; }
+
+mkdir -p "$TARGET" || { echo "[mc-new-mod] impossible de creer $TARGET" >&2; exit 1; }
+TARGET_ABS="$(cd "$TARGET" && pwd)"
+[ -z "$(ls -A "$TARGET_ABS" 2>/dev/null)" ] \
+  || { echo "[mc-new-mod] le dossier cible n'est pas vide: $TARGET_ABS" >&2; exit 1; }
+
+# Classe principale = CamelCase du mod-id ; chemin de package
+MAINCLASS="$(echo "$MODID" | sed -E 's/[-_]+/ /g' \
+  | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) substr($i,2)}; print}' | tr -d ' ')"
+PKGPATH="$(echo "$PACKAGE" | tr '.' '/')"
+echo "[mc-new-mod] mod-id=$MODID  package=$PACKAGE  classe=$MAINCLASS"
+echo "[mc-new-mod] cible : $TARGET_ABS"
+
+# 1) Copier le template (dotfiles inclus grace au /.)
+cp -r "$TEMPLATE"/. "$TARGET_ABS"/
+
+# 2) Renommer les fichiers a token
+mv "$TARGET_ABS/src/main/resources/__MODID__.mixins.json"          "$TARGET_ABS/src/main/resources/$MODID.mixins.json"
+mv "$TARGET_ABS/src/client/resources/__MODID__.client.mixins.json" "$TARGET_ABS/src/client/resources/$MODID.client.mixins.json"
+
+# 3) Substituer les tokens dans les fichiers texte (jamais le wrapper binaire)
+esc() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
+NAME_ESC="$(esc "$NAME")"
+for f in gradle.properties settings.gradle build.gradle \
+         src/main/resources/fabric.mod.json \
+         "src/main/resources/$MODID.mixins.json" \
+         "src/client/resources/$MODID.client.mixins.json"; do
+  sed -i \
+    -e "s/__MODID__/$MODID/g" \
+    -e "s/__PACKAGE__/$PACKAGE/g" \
+    -e "s/__MAINCLASS__/$MAINCLASS/g" \
+    -e "s/__NAME__/$NAME_ESC/g" \
+    "$TARGET_ABS/$f"
+done
+
+# 4) Generer les 2 classes Java au bon chemin de package
+mkdir -p "$TARGET_ABS/src/main/java/$PKGPATH" "$TARGET_ABS/src/client/java/$PKGPATH/client"
+cat > "$TARGET_ABS/src/main/java/$PKGPATH/$MAINCLASS.java" <<EOF
+package $PACKAGE;
+
+import net.fabricmc.api.ModInitializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class $MAINCLASS implements ModInitializer {
+	public static final String MOD_ID = "$MODID";
+	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+	@Override
+	public void onInitialize() {
+		LOGGER.info("[$MODID] Hello Fabric world!");
+	}
+}
+EOF
+cat > "$TARGET_ABS/src/client/java/$PKGPATH/client/${MAINCLASS}Client.java" <<EOF
+package $PACKAGE.client;
+
+import net.fabricmc.api.ClientModInitializer;
+
+public class ${MAINCLASS}Client implements ClientModInitializer {
+	@Override
+	public void onInitializeClient() {
+		// Logique client (rendu, ecrans, reseau cote client).
+	}
+}
+EOF
+
+chmod +x "$TARGET_ABS/gradlew" 2>/dev/null || true
+
+echo "[mc-new-mod] ✅ mod genere."
+echo "   - Ouvre-le dans IntelliJ (File > Open : $TARGET_ABS) et laisse Gradle charger ;"
+echo "   - ou teste tout de suite :  $KIT_ROOT/bin/mc-smoke \"$TARGET_ABS\""

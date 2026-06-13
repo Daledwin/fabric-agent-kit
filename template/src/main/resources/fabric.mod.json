@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "__MODID__",
+	"version": "${version}",
+	"name": "__NAME__",
+	"description": "Un mod Fabric.",
+	"authors": [],
+	"contact": {},
+	"license": "CC0-1.0",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"__PACKAGE__.__MAINCLASS__"
+		],
+		"client": [
+			"__PACKAGE__.client.__MAINCLASS__Client"
+		]
+	},
+	"mixins": [
+		"__MODID__.mixins.json",
+		{
+			"config": "__MODID__.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

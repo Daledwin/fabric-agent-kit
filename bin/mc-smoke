@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# mc-smoke — build (JDK 21) + boot d'un serveur dedie HEADLESS + verifie que le mod charge + stop propre.
+# Rappel : un build qui compile ne prouve PAS que le mod tourne (ex: id de paquet invalide -> crash au boot).
+set -uo pipefail
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jdk.sh
+. "$KIT_DIR/_jdk.sh"
+
+PROJ="."; MARKER=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --marker) MARKER="${2:-}"; shift ;;
+    -h|--help) echo "Usage: mc-smoke [project-dir] [--marker <regex>]"; exit 0 ;;
+    *) PROJ="$1" ;;
+  esac
+  shift
+done
+PROJ="$(cd "$PROJ" 2>/dev/null && pwd)" || { echo "[mc-smoke] dossier introuvable." >&2; exit 2; }
+cd "$PROJ"
+[ -x ./gradlew ] || { echo "[mc-smoke] pas de ./gradlew executable dans $PROJ." >&2; exit 2; }
+
+JDK="$(mc_find_jdk21)" || { echo "[mc-smoke] JDK 21 introuvable ; pose MC_JDK=/chemin/jdk21." >&2; exit 1; }
+export JAVA_HOME="$JDK"
+
+# Marqueur par defaut = l'id du mod (depuis fabric.mod.json) -> prouve qu'il s'est charge.
+if [ -z "$MARKER" ]; then
+  MODID="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' src/main/resources/fabric.mod.json 2>/dev/null \
+           | head -1 | sed -E 's/.*"([^"]+)"$/\1/')"
+  MARKER="${MODID:-Done \(}"
+fi
+
+echo "== [mc-smoke] projet : $PROJ"
+echo "== [mc-smoke] JDK    : $JDK"
+echo "== [mc-smoke] 1/3 build (offline)…"
+BUILD_LOG=/tmp/mc-smoke-build.log
+if ! ./gradlew build --offline --console=plain >"$BUILD_LOG" 2>&1; then
+  echo "FAIL ❌  build echoue. Dernieres lignes :"; tail -25 "$BUILD_LOG"; exit 1
+fi
+echo "   build OK"
+
+mkdir -p run
+printf 'eula=true\n' > run/eula.txt
+[ -f run/server.properties ] || printf 'online-mode=false\nmax-players=3\nmotd=mc-smoke\n' > run/server.properties
+
+LOG=/tmp/mc-smoke-server.log; : > "$LOG"
+echo "== [mc-smoke] 2/3 boot serveur dedie headless… (1er run = generation du monde)"
+# Producteur : attend 'Done (' dans le log puis envoie 'stop' sur le stdin du serveur (fallback 300s).
+( timeout 300 bash -c "until grep -q 'Done (' '$LOG' 2>/dev/null; do sleep 2; done"; echo stop ) \
+  | timeout 360 ./gradlew runServer --no-daemon --console=plain > "$LOG" 2>&1
+RC=$?
+
+echo "== [mc-smoke] 3/3 verification (marqueur: /$MARKER/)"
+ok=1
+grep -q "Done ("            "$LOG" || { echo "  ✗ le serveur n'a jamais atteint 'Done ('"; ok=0; }
+grep -qE "$MARKER"          "$LOG" || { echo "  ✗ marqueur du mod absent"; ok=0; }
+if grep -qE "Incompatible mods|HARD_DEP_NO_CANDIDATE|Mixin .*failed|Could not execute entrypoint|FormattedException" "$LOG"; then
+  echo "  ✗ erreur de chargement de mod detectee"; ok=0
+fi
+[ "$RC" -eq 0 ] || { echo "  ✗ gradle exit $RC"; ok=0; }
+
+echo "--- extrait du log ---"
+grep -nE "$MARKER|Done \(|Loading Minecraft|Incompatible|Exception|Stopping the server" "$LOG" | head -20
+
+if [ "$ok" -eq 1 ]; then
+  echo "PASS ✅  le mod se charge sur un serveur dedie."; exit 0
+else
+  echo "FAIL ❌  log complet : $LOG"; exit 1
+fi

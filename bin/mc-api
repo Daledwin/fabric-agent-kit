@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# mc-api — affiche les signatures Mojang EXACTES d'une classe MC/Fabric (via javap, JDK 21).
+# A utiliser AVANT d'ecrire du code : les mappings 1.21.11 different des tutos Yarn et de la memoire.
+set -uo pipefail
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jdk.sh
+. "$KIT_DIR/_jdk.sh"
+
+usage() {
+  cat >&2 <<'EOF'
+mc-api <classe.pleinement.qualifiee> [regex-grep] [--client|--common|--module <nom>]
+
+Exemples:
+  mc-api net.minecraft.server.level.ServerPlayer 'setGameMode|teleportTo'
+  mc-api net.minecraft.client.gui.components.EditBox addFormatter --client
+  mc-api net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking register --module networking-api-v1
+
+Env: MC_JDK=/chemin/jdk21 (override) | GRADLE_CACHE=~/.gradle/caches (override)
+EOF
+}
+
+[ $# -ge 1 ] || { usage; exit 2; }
+CLASS=""; GREP=""; SCOPE="auto"; MODULE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --client) SCOPE="client" ;;
+    --common) SCOPE="common" ;;
+    --module) SCOPE="module"; MODULE="${2:-}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) if [ -z "$CLASS" ]; then CLASS="$1"; elif [ -z "$GREP" ]; then GREP="$1"; fi ;;
+  esac
+  shift
+done
+[ -n "$CLASS" ] || { usage; exit 2; }
+
+JDK="$(mc_find_jdk21)" || { echo "[mc-api] JDK 21 introuvable ; pose MC_JDK=/chemin/jdk21." >&2; exit 1; }
+CACHE="${GRADLE_CACHE:-$HOME/.gradle/caches}"
+
+find_jar() { # $1 = motif ; exclut sources et la variante intermediary (noms non-Mojang)
+  find "$CACHE" -name "$1" ! -name '*sources*' ! -name '*intermediary*' 2>/dev/null | sort | tail -1
+}
+COMMON="$(find_jar 'minecraft-common-*.jar')"
+CLIENT="$(find_jar 'minecraft-clientonly-*.jar')"
+[ -n "$COMMON" ] || { echo "[mc-api] jar minecraft-common introuvable dans $CACHE (lance d'abord un build Loom)." >&2; exit 1; }
+
+disasm() { "$JDK/bin/javap" -p -cp "$1" "$CLASS" 2>/dev/null; }
+
+raw=""; used=""
+case "$SCOPE" in
+  module)
+    [ -n "$MODULE" ] || { echo "[mc-api] --module attend un nom (ex: networking-api-v1)." >&2; exit 2; }
+    MOD="$(find "$CACHE/modules-2" -path '*net.fabricmc.fabric-api*' -name "fabric-${MODULE}-*.jar" ! -name '*sources*' 2>/dev/null | sort | tail -1)"
+    [ -n "$MOD" ] || { echo "[mc-api] module Fabric introuvable: $MODULE" >&2; exit 1; }
+    raw="$(disasm "$MOD:$CLIENT:$COMMON")"; used="module:$MODULE" ;;
+  client) raw="$(disasm "$CLIENT:$COMMON")"; used="client" ;;
+  common) raw="$(disasm "$COMMON")"; used="common" ;;
+  *)  raw="$(disasm "$COMMON")"; used="common"
+      if [ -z "$raw" ] && [ -n "$CLIENT" ]; then raw="$(disasm "$CLIENT:$COMMON")"; used="client"; fi ;;
+esac
+
+if [ -z "$raw" ]; then
+  echo "[mc-api] classe introuvable: $CLASS" >&2
+  echo "[mc-api] essaie --client, ou --module <nom> (ex: networking-api-v1), ou verifie le nom complet." >&2
+  exit 1
+fi
+
+echo "# $CLASS  (jar: $used)"
+if [ -n "$GREP" ]; then
+  filtered="$(printf '%s\n' "$raw" | grep -E "$GREP")"
+  if [ -n "$filtered" ]; then
+    printf '%s\n' "$filtered"
+  else
+    echo "[mc-api] (le filtre '$GREP' n'a rien matche — voici les membres declares:)"
+    printf '%s\n' "$raw" | grep -vE '^(Compiled from|  static \{|\}$)'
+  fi
+else
+  printf '%s\n' "$raw"
+fi

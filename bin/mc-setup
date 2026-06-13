@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# mc-setup — supprime le footgun JDK : pose org.gradle.java.home=JDK21 (machine-globale),
+# pour que ./gradlew ET IntelliJ utilisent le 21 sans prefixe JAVA_HOME. Imprime aussi l'integration Claude (optionnelle).
+set -uo pipefail
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jdk.sh
+. "$KIT_DIR/_jdk.sh"
+
+JDK="$(mc_find_jdk21)" || { echo "[mc-setup] JDK 21 introuvable ; pose MC_JDK=/chemin/jdk21." >&2; exit 1; }
+echo "[mc-setup] JDK 21 : $JDK"
+
+GP="$HOME/.gradle/gradle.properties"
+mkdir -p "$HOME/.gradle"
+LINE="org.gradle.java.home=$JDK"
+if [ -f "$GP" ] && grep -q '^org\.gradle\.java\.home=' "$GP"; then
+  echo "[mc-setup] org.gradle.java.home deja present dans $GP :"
+  grep '^org\.gradle\.java\.home=' "$GP" | sed 's/^/             /'
+  echo "[mc-setup] (laisse tel quel ; pour le changer -> $LINE)"
+else
+  printf '%s\n' "$LINE" >> "$GP"
+  echo "[mc-setup] ajoute a $GP :"
+  echo "             $LINE"
+  echo "[mc-setup] -> ./gradlew (et IntelliJ) utilisent maintenant le JDK 21, sans prefixe JAVA_HOME."
+fi
+
+SNIP="$KIT_DIR/../claude-adapter/settings.snippet.json"
+echo
+echo "[mc-setup] (optionnel, Claude Code) permissions a fusionner dans .claude/settings.json :"
+if [ -f "$SNIP" ]; then sed 's/^/             /' "$SNIP"; fi
+echo
+echo "[mc-setup] (optionnel) pour charger les conventions : un CLAUDE.md d'une ligne ->"
+echo "             Voir ./tools/fabric-agent-kit/AGENTS.md"
