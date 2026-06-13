@@ -30,7 +30,7 @@ tools/fabric-agent-kit/bin/mc-setup        # configure le JDK 21 pour gradle
 | `bin/mc-new-mod <mod-id> <package> ["Nom"]` | Génère un **nouveau mod** pré-configuré (1.21.11, Mojang, split client/common) hors-ligne — remplace le générateur web. |
 | `bin/mc-api <FQN> [grep] [--client\|--module <m>]` | Signatures Mojang exactes via `javap` (cache loom, JDK 21). **À utiliser AVANT d'écrire du code.** |
 | `bin/mc-smoke [dir] [--marker <re>]` | Build JDK21 + boot serveur dédié headless + assert que le mod charge + stop. |
-| `bin/mc-setup [dir]` | Pose `org.gradle.java.home`=JDK21 (fini le préfixe `JAVA_HOME`) + imprime l'intégration Claude. |
+| `bin/mc-setup [dir]` | Pose `org.gradle.java.home`=JDK21 (fini le préfixe `JAVA_HOME`) **et câble le projet pour un agent** (skills, `CLAUDE.md`, permissions). |
 
 Rien n'est codé en dur : le **JDK 21** et les **jars remappés** sont auto-détectés. Override : `MC_JDK=/chemin/jdk21`.
 
@@ -38,10 +38,21 @@ Rien n'est codé en dur : le **JDK 21** et les **jars remappés** sont auto-dét
 Tout agent doit lire **[`AGENTS.md`](AGENTS.md)** : la config, la règle « vérifier avant d'écrire », et le
 catalogue des pièges de mapping 1.21.11.
 
-## Claude Code (optionnel)
-`claude-adapter/` fournit deux skills fins (`/mc-api`, `/run-mod`) + un snippet de permissions. Pour les
-activer dans un projet hôte, copier ou symlinker `claude-adapter/skills/*` sous son `.claude/skills/`.
-Rien de tout ça n'est requis pour les autres agents — ils appellent directement `bin/*`.
+## Démarrage clé en main (Claude Code)
+Une fois le mod généré, **un seul appel suffit** :
+```bash
+tools/fabric-agent-kit/bin/mc-setup .
+```
+`mc-setup` configure le JDK 21 **et** câble le projet (idempotent, non destructif) :
+- symlinks `.claude/skills/{mc-api,run-mod,new-mod,start-mod}` → le submodule ;
+- `CLAUDE.md` : pointeur vers `AGENTS.md` + protocole d'onboarding ;
+- fusion des permissions dans `.claude/settings.json`.
+
+Ensuite : ouvrir une session d'agent dans le dossier du mod et dire **« commençons le module »** (ou
+`/start-mod`) → l'agent lit `AGENTS.md`, passe en **mode plan**, pose les questions de cadrage, puis code en
+appliquant la règle d'or (`/mc-api` avant, `/run-mod` après). Pour ne configurer que le JDK : `mc-setup . --no-claude`.
+
+Les autres agents n'ont besoin de rien de tout ça — ils appellent directement `bin/*` et lisent `AGENTS.md`.
 
 ## Origine
 Extrait des patterns réels d'une session de création d'un mod Fabric (`login`) : ~10 vérifs d'API par `javap`,
