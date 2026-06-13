@@ -57,6 +57,15 @@ un `CLAUDE.md` **pointeur fin** vers `AGENTS.md` (pas de duplication du protocol
 permissions dans `.claude/settings.json`. Les slash-commands sont une feature propre à Claude ; les autres
 agents appellent `bin/*` directement.
 
+### Pointeurs multi-agents (opt-in)
+```bash
+tools/fabric-agent-kit/bin/mc-setup . --agents   # pointeurs fins pour plusieurs agents
+```
+`--agents` génère des **pointeurs fins** (bloc géré entre marqueurs, idempotent) qui renvoient **tous** vers le
+`AGENTS.md` du kit : `AGENTS.md` (racine, standard agents.md / Codex), `CLAUDE.md`, `GEMINI.md`, `.cursorrules`
+(Cursor), `.github/copilot-instructions.md` (Copilot). Une seule source de vérité, plusieurs portes d'entrée.
+Se combine avec `--claude` (`mc-setup . --agents --claude` = pointeurs partout **+** skills/permissions Claude).
+
 ## Origine
 Extrait des patterns réels d'une session de création d'un mod Fabric (`login`) : ~10 vérifs d'API par `javap`,
 le footgun JDK 17/21, et le boot serveur headless qui a révélé un bug runtime invisible au build.

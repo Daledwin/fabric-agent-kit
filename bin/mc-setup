@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# mc-setup — rend un projet de mod "cle en main" pour un agent :
-#   1) supprime le footgun JDK : pose org.gradle.java.home=JDK21 (machine-globale) ;
-#   2) cable le projet pour Claude Code : skills (symlinks), CLAUDE.md (onboarding), permissions.
-# Apres ca : ouvrir une session d'agent dans le dossier du mod et dire "commencons le module" (ou /start-mod).
-# Usage : mc-setup [dir] [--no-claude]
+# mc-setup — configure le JDK et (optionnellement) cable le projet pour un/des agent(s).
+#   defaut          : NEUTRE — pose org.gradle.java.home=JDK21 (machine-globale) ; pointe vers AGENTS.md.
+#   --claude        : adaptateur Claude Code (skills symlinks, CLAUDE.md pointeur, permissions).
+#   --agents|--multi: pointeurs fins multi-agents (AGENTS.md racine, CLAUDE.md, GEMINI.md, .cursorrules,
+#                     .github/copilot-instructions.md) -> tous renvoient vers le AGENTS.md du kit (le cerveau).
+# Le cerveau (conventions + protocole de demarrage) vit dans tools/fabric-agent-kit/AGENTS.md, jamais duplique.
+# Usage : mc-setup [dir] [--claude] [--agents]
 set -uo pipefail
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_ROOT="$(cd "$KIT_DIR/.." && pwd)"
@@ -11,15 +13,14 @@ KIT_ROOT="$(cd "$KIT_DIR/.." && pwd)"
 . "$KIT_DIR/_jdk.sh"
 
 # --- arguments ---
-# Defaut NEUTRE (agent-agnostique) : seul le JDK est configure. Le cablage Claude Code
-# (.claude/skills, CLAUDE.md pointeur, settings.json) ne se fait qu'avec --claude.
-PROJ="."; WIRE=0
+PROJ="."; CLAUDE_ADAPTER=0; MULTI=0
 for a in "$@"; do
   case "$a" in
-    --claude)    WIRE=1 ;;
-    --no-claude) WIRE=0 ;;
-    -*)          : ;;            # flag inconnu : ignore
-    *)           PROJ="$a" ;;
+    --claude)               CLAUDE_ADAPTER=1 ;;
+    --no-claude)            CLAUDE_ADAPTER=0 ;;
+    --agents|--multi|--all-agents) MULTI=1 ;;
+    -*)                     : ;;            # flag inconnu : ignore
+    *)                      PROJ="$a" ;;
   esac
 done
 
@@ -41,13 +42,15 @@ else
   echo "[mc-setup] -> ./gradlew (et IntelliJ) utilisent maintenant le JDK 21, sans prefixe JAVA_HOME."
 fi
 
-# --- 2) cablage agent (Claude Code) — OPT-IN via --claude ---
-if [ "$WIRE" != 1 ]; then
+# --- 2) cablage agent — OPT-IN ---
+if [ "$CLAUDE_ADAPTER" != 1 ] && [ "$MULTI" != 1 ]; then
   echo
   echo "[mc-setup] Conventions + protocole de demarrage (agent-agnostique) :"
   echo "             tools/fabric-agent-kit/AGENTS.md"
   echo "[mc-setup] Tout agent : lis AGENTS.md, puis dis « commençons le module »."
-  echo "[mc-setup] (Claude Code) pour l'adaptateur skills/CLAUDE.md/permissions : mc-setup . --claude"
+  echo "[mc-setup] Cablage optionnel :"
+  echo "             --claude   adaptateur Claude Code (skills, CLAUDE.md, permissions)"
+  echo "             --agents   pointeurs multi-agents (AGENTS.md, CLAUDE.md, GEMINI.md, .cursorrules, copilot)"
   exit 0
 fi
 
@@ -63,24 +66,7 @@ rel_path() { # $1 = depuis (dossier)  $2 = vers (chemin) -> chemin relatif
   fi
 }
 
-# 2a) skills en symlinks relatifs vers le submodule
-mkdir -p "$PROJ_ABS/.claude/skills"
-for s in mc-api run-mod new-mod start-mod; do
-  src="$KIT_ROOT/claude-adapter/skills/$s"
-  [ -d "$src" ] || continue
-  link="$PROJ_ABS/.claude/skills/$s"
-  tgt="$(rel_path "$PROJ_ABS/.claude/skills" "$src")"
-  if [ -L "$link" ]; then
-    ln -sfn "$tgt" "$link"; echo "             skill ~ /$s"
-  elif [ -e "$link" ]; then
-    echo "             skill ! /$s existe (non-symlink) -> laisse tel quel"
-  else
-    ln -s "$tgt" "$link"; echo "             skill + /$s"
-  fi
-done
-
-# 2b) CLAUDE.md : POINTEUR FIN vers AGENTS.md (le cerveau, agent-agnostique, vit dans AGENTS.md).
-#     On ne duplique pas le protocole ici ; Claude lit ce fichier -> il est renvoye vers AGENTS.md.
+# nom lisible (pour le titre des pointeurs neufs)
 NAME="$(basename "$PROJ_ABS")"
 FMJ="$PROJ_ABS/src/main/resources/fabric.mod.json"
 if [ -f "$FMJ" ]; then
@@ -88,51 +74,91 @@ if [ -f "$FMJ" ]; then
   [ -n "${n:-}" ] && NAME="$n"
 fi
 
-CLAUDE="$PROJ_ABS/CLAUDE.md"
-read -r -d '' BLOCK <<'EOF' || true
-<!-- fabric-agent-kit:start -->
-**Lis et applique `tools/fabric-agent-kit/AGENTS.md`** : conventions (MC 1.21.11 / Mojang / JDK21,
-split client-serveur, regle d'or « verifier l'API avant d'ecrire ») **et** le protocole de demarrage.
-Quand l'utilisateur dit « commençons le module », suis ce protocole (ou lance `/start-mod`).
+# chemin (relatif a la racine projet) vers le cerveau
+AGENTS_REL="$(rel_path "$PROJ_ABS" "$KIT_ROOT")/AGENTS.md"
 
-Skills (confort, par-dessus `bin/*`) : `/mc-api` `/run-mod` `/new-mod` `/start-mod`.
+# bloc-pointeur generique (valable pour TOUT agent) ; le cerveau reste AGENTS.md
+POINTER="$(cat <<EOF
+<!-- fabric-agent-kit:start -->
+**Lis et applique \`$AGENTS_REL\`** — conventions (MC 1.21.11 / Mojang / JDK21, split client-serveur,
+regle d'or « verifier l'API avant d'ecrire ») ET le protocole de demarrage du mod.
+Quand l'utilisateur dit « commençons le module » / « start the mod », suis ce protocole.
 <!-- fabric-agent-kit:end -->
 EOF
+)"
 
-if [ ! -f "$CLAUDE" ]; then
-  { printf '# %s — mod Fabric\n\n' "$NAME"; printf '%s\n' "$BLOCK"; } > "$CLAUDE"
-  echo "             CLAUDE.md + cree (pointeur fin -> AGENTS.md)"
-elif ! grep -q 'fabric-agent-kit:start' "$CLAUDE"; then
-  { printf '\n'; printf '%s\n' "$BLOCK"; } >> "$CLAUDE"
-  echo "             CLAUDE.md ~ pointeur ajoute"
-else
-  echo "             CLAUDE.md = deja cable"
+write_pointer() { # $1 = fichier cible
+  local f="$1" dir
+  dir="$(dirname "$f")"; mkdir -p "$dir"
+  if [ -f "$f" ] && grep -q 'fabric-agent-kit:start' "$f"; then
+    sed '/fabric-agent-kit:start/,/fabric-agent-kit:end/d' "$f" > "$f.tmp"
+    printf '%s\n' "$POINTER" >> "$f.tmp" && mv "$f.tmp" "$f"
+    echo "             ~ ${f#"$PROJ_ABS"/}"
+  elif [ -f "$f" ]; then
+    { printf '\n'; printf '%s\n' "$POINTER"; } >> "$f"
+    echo "             ~ ${f#"$PROJ_ABS"/} (bloc ajoute)"
+  else
+    { printf '# %s — mod Fabric\n\n' "$NAME"; printf '%s\n' "$POINTER"; } > "$f"
+    echo "             + ${f#"$PROJ_ABS"/}"
+  fi
+}
+
+# 2a) pointeurs multi-agents (hors CLAUDE.md, gere juste apres pour les deux modes)
+if [ "$MULTI" = 1 ]; then
+  echo "[mc-setup] pointeurs multi-agents -> $AGENTS_REL"
+  write_pointer "$PROJ_ABS/AGENTS.md"                       # standard agents.md (Codex, etc.)
+  write_pointer "$PROJ_ABS/GEMINI.md"                       # Gemini CLI
+  write_pointer "$PROJ_ABS/.cursorrules"                    # Cursor (legacy, toujours supporte)
+  write_pointer "$PROJ_ABS/.github/copilot-instructions.md" # GitHub Copilot
 fi
 
-# 2c) permissions -> .claude/settings.json (union de allow)
-SNIP="$KIT_ROOT/claude-adapter/settings.snippet.json"
-SET="$PROJ_ABS/.claude/settings.json"
-if [ -f "$SNIP" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    if [ -f "$SET" ]; then
-      jq --slurpfile s "$SNIP" \
-        '.permissions.allow = (((.permissions.allow // []) + ($s[0].permissions.allow // [])) | unique)' \
-        "$SET" > "$SET.tmp" && mv "$SET.tmp" "$SET"
-      echo "             settings.json ~ permissions fusionnees"
+# 2b) CLAUDE.md : pointeur fin (des que --claude OU --agents)
+if [ "$CLAUDE_ADAPTER" = 1 ] || [ "$MULTI" = 1 ]; then
+  write_pointer "$PROJ_ABS/CLAUDE.md"
+fi
+
+# 2c) adaptateur Claude riche : skills (symlinks) + permissions
+if [ "$CLAUDE_ADAPTER" = 1 ]; then
+  echo "[mc-setup] adaptateur Claude Code"
+  mkdir -p "$PROJ_ABS/.claude/skills"
+  for s in mc-api run-mod new-mod start-mod; do
+    src="$KIT_ROOT/claude-adapter/skills/$s"
+    [ -d "$src" ] || continue
+    link="$PROJ_ABS/.claude/skills/$s"
+    tgt="$(rel_path "$PROJ_ABS/.claude/skills" "$src")"
+    if [ -L "$link" ]; then
+      ln -sfn "$tgt" "$link"; echo "             skill ~ /$s"
+    elif [ -e "$link" ]; then
+      echo "             skill ! /$s existe (non-symlink) -> laisse tel quel"
     else
-      jq '.' "$SNIP" > "$SET"
-      echo "             settings.json + cree"
+      ln -s "$tgt" "$link"; echo "             skill + /$s"
     fi
-  else
-    if [ -f "$SET" ]; then
-      echo "             settings.json ! jq absent -> fusionne ces permissions a la main :"
-      sed 's/^/               /' "$SNIP"
+  done
+
+  SNIP="$KIT_ROOT/claude-adapter/settings.snippet.json"
+  SET="$PROJ_ABS/.claude/settings.json"
+  if [ -f "$SNIP" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      if [ -f "$SET" ]; then
+        jq --slurpfile s "$SNIP" \
+          '.permissions.allow = (((.permissions.allow // []) + ($s[0].permissions.allow // [])) | unique)' \
+          "$SET" > "$SET.tmp" && mv "$SET.tmp" "$SET"
+        echo "             settings.json ~ permissions fusionnees"
+      else
+        jq '.' "$SNIP" > "$SET"
+        echo "             settings.json + cree"
+      fi
     else
-      cp "$SNIP" "$SET"
-      echo "             settings.json + cree (copie)"
+      if [ -f "$SET" ]; then
+        echo "             settings.json ! jq absent -> fusionne ces permissions a la main :"
+        sed 's/^/               /' "$SNIP"
+      else
+        cp "$SNIP" "$SET"
+        echo "             settings.json + cree (copie)"
+      fi
     fi
   fi
 fi
 
 echo
-echo "[mc-setup] OK projet cable. Ouvre une session d'agent ici et dis « commençons le module » (ou /start-mod)."
+echo "[mc-setup] OK projet cable. Ouvre une session d'agent ici et dis « commençons le module »."
