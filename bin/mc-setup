@@ -11,11 +11,13 @@ KIT_ROOT="$(cd "$KIT_DIR/.." && pwd)"
 . "$KIT_DIR/_jdk.sh"
 
 # --- arguments ---
-PROJ="."; WIRE=1
+# Defaut NEUTRE (agent-agnostique) : seul le JDK est configure. Le cablage Claude Code
+# (.claude/skills, CLAUDE.md pointeur, settings.json) ne se fait qu'avec --claude.
+PROJ="."; WIRE=0
 for a in "$@"; do
   case "$a" in
-    --no-claude) WIRE=0 ;;
     --claude)    WIRE=1 ;;
+    --no-claude) WIRE=0 ;;
     -*)          : ;;            # flag inconnu : ignore
     *)           PROJ="$a" ;;
   esac
@@ -39,9 +41,13 @@ else
   echo "[mc-setup] -> ./gradlew (et IntelliJ) utilisent maintenant le JDK 21, sans prefixe JAVA_HOME."
 fi
 
-# --- 2) cablage agent (Claude Code) ---
+# --- 2) cablage agent (Claude Code) — OPT-IN via --claude ---
 if [ "$WIRE" != 1 ]; then
-  echo "[mc-setup] (--no-claude) cablage agent ignore."
+  echo
+  echo "[mc-setup] Conventions + protocole de demarrage (agent-agnostique) :"
+  echo "             tools/fabric-agent-kit/AGENTS.md"
+  echo "[mc-setup] Tout agent : lis AGENTS.md, puis dis « commençons le module »."
+  echo "[mc-setup] (Claude Code) pour l'adaptateur skills/CLAUDE.md/permissions : mc-setup . --claude"
   exit 0
 fi
 
@@ -73,7 +79,8 @@ for s in mc-api run-mod new-mod start-mod; do
   fi
 done
 
-# 2b) CLAUDE.md : pointeur AGENTS.md + protocole d'onboarding (bloc gere entre marqueurs)
+# 2b) CLAUDE.md : POINTEUR FIN vers AGENTS.md (le cerveau, agent-agnostique, vit dans AGENTS.md).
+#     On ne duplique pas le protocole ici ; Claude lit ce fichier -> il est renvoye vers AGENTS.md.
 NAME="$(basename "$PROJ_ABS")"
 FMJ="$PROJ_ABS/src/main/resources/fabric.mod.json"
 if [ -f "$FMJ" ]; then
@@ -84,34 +91,20 @@ fi
 CLAUDE="$PROJ_ABS/CLAUDE.md"
 read -r -d '' BLOCK <<'EOF' || true
 <!-- fabric-agent-kit:start -->
-## Demarrage du mod
-Quand l'utilisateur dit « commençons le module » / « start the mod » (ou lance `/start-mod`) :
-1. Lire `tools/fabric-agent-kit/AGENTS.md` en entier et le respecter.
-2. Passer en **mode plan** et poser les questions de cadrage AVANT d'ecrire du code :
-   que doit faire le mod ? serveur / client / les deux ? dependances (Modrinth, autres mods) ?
-   surface d'interaction (commandes, ecran GUI, events, fichier de config) ?
-3. Proposer un plan court, le faire valider.
-4. Coder en appliquant la regle d'or : `/mc-api` AVANT chaque appel Minecraft/Fabric,
-   `/run-mod` APRES chaque etape qui compile. Ne jamais deviner un nom de methode/classe.
+**Lis et applique `tools/fabric-agent-kit/AGENTS.md`** : conventions (MC 1.21.11 / Mojang / JDK21,
+split client-serveur, regle d'or « verifier l'API avant d'ecrire ») **et** le protocole de demarrage.
+Quand l'utilisateur dit « commençons le module », suis ce protocole (ou lance `/start-mod`).
 
-## Outils (skills)
-- `/mc-api <FQN> [regex]` — signature Mojang exacte (avant d'ecrire).
-- `/run-mod` — build + boot serveur headless + assert que le mod charge (apres).
-- `/new-mod` — generer un nouveau mod (deja fait pour celui-ci).
-- `/start-mod` — (re)enclencher ce protocole d'onboarding.
+Skills (confort, par-dessus `bin/*`) : `/mc-api` `/run-mod` `/new-mod` `/start-mod`.
 <!-- fabric-agent-kit:end -->
 EOF
 
 if [ ! -f "$CLAUDE" ]; then
-  { printf '# %s — mod Fabric\n\n' "$NAME"
-    printf 'Conventions et outils : **lire `tools/fabric-agent-kit/AGENTS.md`** '
-    printf '(config 1.21.11/Mojang/JDK21, split client/serveur, regle d'\''or « verifier l'\''API avant d'\''ecrire »).\n\n'
-    printf '%s\n' "$BLOCK"
-  } > "$CLAUDE"
-  echo "             CLAUDE.md + cree"
+  { printf '# %s — mod Fabric\n\n' "$NAME"; printf '%s\n' "$BLOCK"; } > "$CLAUDE"
+  echo "             CLAUDE.md + cree (pointeur fin -> AGENTS.md)"
 elif ! grep -q 'fabric-agent-kit:start' "$CLAUDE"; then
   { printf '\n'; printf '%s\n' "$BLOCK"; } >> "$CLAUDE"
-  echo "             CLAUDE.md ~ bloc d'onboarding ajoute"
+  echo "             CLAUDE.md ~ pointeur ajoute"
 else
   echo "             CLAUDE.md = deja cable"
 fi

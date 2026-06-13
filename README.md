@@ -38,21 +38,24 @@ Rien n'est codé en dur : le **JDK 21** et les **jars remappés** sont auto-dét
 Tout agent doit lire **[`AGENTS.md`](AGENTS.md)** : la config, la règle « vérifier avant d'écrire », et le
 catalogue des pièges de mapping 1.21.11.
 
-## Démarrage clé en main (Claude Code)
-Une fois le mod généré, **un seul appel suffit** :
+## Démarrage (générique par défaut)
+Le **cerveau est dans [`AGENTS.md`](AGENTS.md)** : conventions **et** protocole d'onboarding (« commençons le
+module » → lire les conventions → cadrer → plan → coder avec vérif-avant-écriture). C'est **agent-agnostique**.
+
 ```bash
-tools/fabric-agent-kit/bin/mc-setup .
+tools/fabric-agent-kit/bin/mc-setup .        # défaut NEUTRE : configure le JDK 21, pointe vers AGENTS.md
 ```
-`mc-setup` configure le JDK 21 **et** câble le projet (idempotent, non destructif) :
-- symlinks `.claude/skills/{mc-api,run-mod,new-mod,start-mod}` → le submodule ;
-- `CLAUDE.md` : pointeur vers `AGENTS.md` + protocole d'onboarding ;
-- fusion des permissions dans `.claude/settings.json`.
+Ensuite, avec n'importe quel agent : ouvrir une session dans le dossier du mod, lui faire lire `AGENTS.md`,
+et dire **« commençons le module »**.
 
-Ensuite : ouvrir une session d'agent dans le dossier du mod et dire **« commençons le module »** (ou
-`/start-mod`) → l'agent lit `AGENTS.md`, passe en **mode plan**, pose les questions de cadrage, puis code en
-appliquant la règle d'or (`/mc-api` avant, `/run-mod` après). Pour ne configurer que le JDK : `mc-setup . --no-claude`.
-
-Les autres agents n'ont besoin de rien de tout ça — ils appellent directement `bin/*` et lisent `AGENTS.md`.
+### Adaptateur Claude Code (opt-in)
+```bash
+tools/fabric-agent-kit/bin/mc-setup . --claude   # AJOUTE le confort Claude
+```
+`--claude` câble (idempotent, non destructif) : symlinks `.claude/skills/{mc-api,run-mod,new-mod,start-mod}`,
+un `CLAUDE.md` **pointeur fin** vers `AGENTS.md` (pas de duplication du protocole), et la fusion des
+permissions dans `.claude/settings.json`. Les slash-commands sont une feature propre à Claude ; les autres
+agents appellent `bin/*` directement.
 
 ## Origine
 Extrait des patterns réels d'une session de création d'un mod Fabric (`login`) : ~10 vérifs d'API par `javap`,

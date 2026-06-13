@@ -20,6 +20,22 @@ bin/mc-api net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking register -
 Ne JAMAIS deviner un nom de méthode/classe. Et un build qui compile **ne prouve pas** que c'est correct au
 runtime (cf. `createType` ci-dessous) → toujours finir par `bin/mc-smoke`.
 
+## Démarrer le développement du mod (protocole d'onboarding)
+Quand l'utilisateur dit « **commençons le module** » / « start the mod » (sous Claude Code : `/start-mod`),
+applique ce protocole — **ne saute pas directement au code** :
+1. **Lis ce fichier en entier** et respecte-le (config épinglée, split client/serveur, règle d'or ci-dessus).
+2. **Cadre avant de coder.** Pose à l'utilisateur les questions de cadrage :
+   - Que doit faire le mod ? (la fonctionnalité centrale, en une ou deux phrases)
+   - **Serveur**, **client**, ou les deux ? (logique serveur vs GUI/rendu/réseau client)
+   - Dépendances ? (Fabric API est acquis ; des projets Modrinth ou d'autres mods ?)
+   - Surface d'interaction ? (commandes, écran GUI, events monde, fichier de config)
+3. **Propose un plan court** et fais-le valider avant d'écrire du code.
+4. **Code en appliquant la règle d'or** : `bin/mc-api` AVANT chaque appel Minecraft/Fabric, `bin/mc-smoke`
+   APRÈS chaque étape qui compile. Ne devine jamais un nom de méthode/classe.
+
+Ce protocole est **agent-agnostique** (il vit ici, pas dans un fichier propre à un agent). Les slash-commands
+`/mc-api`, `/run-mod`, `/start-mod` ne sont qu'un confort Claude Code par-dessus `bin/*`.
+
 ## Créer un nouveau mod
 ```bash
 bin/mc-new-mod <mod-id> <package> ["Nom"]   # ex: bin/mc-new-mod superbloc hugo.brua.superbloc "Super Bloc"
