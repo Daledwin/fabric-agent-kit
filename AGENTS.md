@@ -69,6 +69,16 @@ Le **client** (`./gradlew runClient`) doit être lancé par un humain : GUI Open
   pousser au client : `ServerPlayNetworking.canSend(player, TYPE)` puis `send(...)`.
 - **GUI** : `Screen.keyPressed(net.minecraft.client.input.KeyEvent)` (plus `(int,int,int)`) → `event.key()` (code GLFW) ;
   masquer un champ : `EditBox.addFormatter((txt,i) -> FormattedCharSequence.forward("*".repeat(txt.length()), Style.EMPTY))`.
+- **GUI — fond/flou (refonte rendu 1.21.11)** : dans un `Screen` custom, **NE PAS** appeler `renderBackground(...)` dans
+  `render()`. Le moteur (`Screen.renderWithTooltipAndSubtitles`) appelle déjà `renderBackground` **avant** `render()`,
+  et `Screen.render()` ne dessine que les widgets. Un appel manuel = 2ᵉ flou → crash runtime
+  `IllegalStateException: Can only blur once per frame` (`GuiRenderState.blurBeforeThisStratum`). Override `render()`
+  = `super.render(g,mx,my,dt)` (widgets) **puis** ton texte ; le fond est déjà géré. (Compile sans erreur → seul le
+  runtime/`runClient` l'attrape.)
+- **GUI — couleurs de texte = ARGB alpha plein** : `GuiGraphics.drawString/drawCenteredString(...,int color)` ne force
+  **plus** l'opacité en 1.21.11. Une couleur RGB sans alpha (ex. `0xFFFFFF` = `0x00FFFFFF`, alpha `0x00`) est rendue
+  **totalement transparente** → texte invisible (boutons OK, mais aucun label/titre ne s'affiche). Toujours passer
+  `0xFF......` (ex. `0xFFFFFFFF` blanc, `0xFFFF6B6B` rouge). Compile sans erreur → bug visuel runtime seulement.
 - **Joueur** : `player.gameMode()` (lit le `GameType`), `setGameMode(GameType)`, `teleportTo(d,d,d)`,
   `getUUID()`, `getName().getString()`, `player.level().getServer()`. En restaurant un gamemode : si le joueur
   était DÉJÀ spectateur, retomber sur `server.getDefaultGameType()` (sinon il reste coincé).
