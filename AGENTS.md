@@ -27,6 +27,15 @@ bin/mc-new-mod <mod-id> <package> ["Nom"]   # ex: bin/mc-new-mod superbloc hugo.
 Génère **hors-ligne** un squelette pré-configuré (1.21.11, mappings Mojang, split client/common) qui compile
 et tourne — plus besoin du générateur web. Ensuite : ouvrir dans IntelliJ, ou `bin/mc-smoke <dir>` pour vérifier.
 
+Flux **dépôt vide → submodule → génération** (pas de copie standalone du kit) :
+```bash
+mkdir superbloc && cd superbloc && git init -b main
+git submodule add <url-du-kit> tools/fabric-agent-kit
+tools/fabric-agent-kit/bin/mc-new-mod superbloc hugo.brua.superbloc "Super Bloc" --dir .
+```
+`--dir .` est accepté même si la cible contient déjà `.git`, `.gitmodules` ou `tools/` : la génération ne
+refuse que si un fichier qu'elle écrirait (build.gradle, src/, gradlew…) existe déjà.
+
 ## Build & run
 ```bash
 bin/mc-setup            # une fois : configure le JDK 21 pour gradle (et IntelliJ)

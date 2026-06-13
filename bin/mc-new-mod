@@ -42,8 +42,14 @@ echo "$PACKAGE" | grep -qE '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$' \
 
 mkdir -p "$TARGET" || { echo "[mc-new-mod] impossible de creer $TARGET" >&2; exit 1; }
 TARGET_ABS="$(cd "$TARGET" && pwd)"
-[ -z "$(ls -A "$TARGET_ABS" 2>/dev/null)" ] \
-  || { echo "[mc-new-mod] le dossier cible n'est pas vide: $TARGET_ABS" >&2; exit 1; }
+# La cible peut contenir des elements de bootstrap (.git, .gitmodules, un submodule
+# dans tools/, etc.) : on ne refuse que si un fichier REELLEMENT genere existe deja.
+# Ca permet le flux "depot vide + submodule, puis generation a la racine".
+for rel in build.gradle settings.gradle gradle.properties gradlew gradlew.bat \
+           .gitignore .gitattributes gradle src; do
+  [ -e "$TARGET_ABS/$rel" ] \
+    && { echo "[mc-new-mod] conflit : « $rel » existe deja dans la cible: $TARGET_ABS" >&2; exit 1; }
+done
 
 # Classe principale = CamelCase du mod-id ; chemin de package
 MAINCLASS="$(echo "$MODID" | sed -E 's/[-_]+/ /g' \
