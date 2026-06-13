@@ -1,0 +1,15 @@
+# Normalisation des fins de ligne.
+# Empêche core.autocrlf (config locale de qui clone) de casser les scripts shell :
+# un CRLF dans un shebang donne « /usr/bin/env: bash\r: Aucun fichier… » sous Linux.
+* text=auto
+
+# Scripts shell — CLI du kit + wrapper Gradle — TOUJOURS en LF, même sur Windows/autocrlf=true.
+bin/*    text eol=lf
+*.sh     text eol=lf
+gradlew  text eol=lf
+
+# Scripts Windows : CRLF.
+*.bat    text eol=crlf
+
+# Binaires : aucune conversion.
+*.jar    binary
