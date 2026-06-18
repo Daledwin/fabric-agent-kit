@@ -8,6 +8,10 @@ Doc destinée à **tout agent** (et tout humain) qui touche à un mod Fabric ici
   (`bin/mc-setup` pose `org.gradle.java.home` une fois pour toutes).
 - Projet **split client/common** : `src/main` = code commun/**serveur**, `src/client` = code **client only**
   (écrans/GUI, rendu, réseau côté client). Du code client appelé dans `src/main` peut **crasher le serveur**.
+- **Pseudo de dev par développeur** : `runClient` se lance avec un pseudo hors-ligne par défaut égal à
+  ton **login OS** (chaque dev a le sien, rien de personnel commité). Override : `-PmcDevUsername=<nom>`
+  ou `mcDevUsername=<nom>` dans ton `~/.gradle/gradle.properties` perso. C'est du dev (offline, sans compte
+  payant) — ça n'autorise pas à *jouer* sans licence, juste à développer/tester le mod.
 
 ## Règle d'or : vérifier l'API AVANT d'écrire
 Les mappings Mojang 1.21.11 **diffèrent** des tutos Yarn et de la mémoire des modèles. Avant d'écrire un

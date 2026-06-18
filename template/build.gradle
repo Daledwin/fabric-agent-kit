@@ -14,6 +14,16 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	runs {
+		client {
+			// Pseudo hors-ligne du client de dev. Par défaut = ton login OS, donc
+			// chaque dev a le sien sans config et rien de personnel n'est commité.
+			// Override : -PmcDevUsername=<nom>, ou `mcDevUsername=<nom>` dans ton
+			// ~/.gradle/gradle.properties PERSONNEL (pas dans le dépôt).
+			programArgs '--username', (project.findProperty('mcDevUsername') ?: System.getProperty('user.name', 'Dev'))
+		}
+	}
+
 	mods {
 		"__MODID__" {
 			sourceSet sourceSets.main
